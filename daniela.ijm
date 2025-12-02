@@ -1,25 +1,36 @@
+// ==================================================
 // 0. INITIALIZATION
+// ==================================================
 run("Close All");
 run("Clear Results"); 
 print("\\Clear");
 
-// Configuración importante (AR incluido)
+// Configuración para que funcione la elongación (AR)
+// [cite: 7, 10] PDF: Segmentar, analizar y contar elongados.
 run("Set Measurements...", "area centroid shape redirect=None decimal=3");
 
+// ==================================================
 // 1. INPUTS
+// ==================================================
+// [cite: 5] PDF: Ask the user for an Input folder
 InputFolder = getDirectory("Select input images folder");
-Files = getFileList(InputFolder);
 
-// === NUEVO: Pedimos dónde guardar las imágenes finales ===
+// [cite: 15] PDF: Ask the user for an Output folder
 OutputFolder = getDirectory("Select output folder to save images");
 
+Files = getFileList(InputFolder);
+
 // Contadores Globales
+// [cite: 13] PDF: Accumulate data to compute averages at the end
 numAllNuclei = 0;
 numAllCentrosomes = 0;
 numAllElongated = 0;
 ImageCount = 0;
 
+// ==================================================
 // 2. MAIN LOOP
+// ==================================================
+// [cite: 6] PDF: Write a loop to process the images
 for(i=0; i<lengthOf(Files); i++)
 {
     // Filtro para asegurar que es una imagen
@@ -37,12 +48,12 @@ for(i=0; i<lengthOf(Files); i++)
         rename("Input");
         run("Split Channels");
         
-        // === IMPORTANTE: NO CERRAMOS C1 (Lo usamos de fondo) ===
-        // close("C1-Input"); 
+        // NO CERRAMOS C1 (Fase) todavía, la usaremos de fondo para la imagen final [cite: 14]
         
         // ------------------------------------------------
         // A. ANALIZAR NÚCLEOS (C3)
         // ------------------------------------------------
+        // [cite: 7] PDF: Properly segment the nuclei to a mask
         selectImage("C3-Input");
         run("Duplicate...", "title=Mask");
         run("Median...", "radius=1");
@@ -52,125 +63,145 @@ for(i=0; i<lengthOf(Files); i++)
         run("Convert to Mask");
         run("Watershed");
         
+        // [cite: 8] PDF: Analyze the nuclei mask and add the nuclei to the ROI Manager
         run("Analyze Particles...", "display exclude include summarize add measure");
         
         numNuclei = nResults;
         numAllNuclei = numAllNuclei + numNuclei;
-        print("Amount of nuclei in image " + ImageCount +": "+ numNuclei);
         
-        // Calcular Área y Elongación (Tu lógica con AR)
+        // --- COLOREAR Y CLASIFICAR NÚCLEOS ---
+        // [cite: 10] PDF: Optionally color them in the ROI Manager
+        
         totalArea = 0;
         numElongatedLocal = 0;
         
         for (x=0; x<nResults; x++){
-            // Area
+            // Sumar Área [cite: 9]
             valorArea = getResult("Area", x);
             totalArea = totalArea + valorArea;
             
-            // Elongación (AR)
+            // Chequear Elongación (AR >= 1.6)
             ar = getResult("AR", x);
+            
+            roiManager("Select", x);
             if (ar >= 1.6){
                 numElongatedLocal = numElongatedLocal + 1;
-                // NOTA: Aunque los pintemos de azul aquí en el Manager, 
-                // el bloque de guardado de abajo los pintará de amarillo para la foto final
-                // tal como pediste en tu código de ejemplo.
-                roiManager("select", x);
+                // Núcleos Elongados en AZUL (para distinguirlos)
                 roiManager("Set Color", "blue"); 
+                roiManager("Set Line Width", 2);
+            } else {
+                // Núcleos Normales en AMARILLO
+                roiManager("Set Color", "yellow"); 
+                roiManager("Set Line Width", 2);
             }
         }
         roiManager("Deselect");
-        
-        if (numNuclei > 0){
-            avgArea = totalArea/numNuclei;
-            print("Average area of all nuclei in image " + ImageCount +": " + avgArea);
-        }
-        
-        print("Amount of elongated nuclei in image " + ImageCount + ": "+ numElongatedLocal);
-        
-        pctElongated = 0;
-        if (numNuclei > 0) {
-            pctElongated = (numElongatedLocal / numNuclei) * 100;
-        }
-        print(pctElongated + " % of nuclei are elongated in image " + ImageCount);
         numAllElongated = numAllElongated + numElongatedLocal;
         
+        // Limpiar máscaras
         close("Mask");
         close("C3-Input");
         
         // ------------------------------------------------
         // B. ANALIZAR CENTROSOMAS (C2)
         // ------------------------------------------------
+        // [cite: 10] PDF: Properly detect the centrosomes (Find Maxima output List recommended for counting)
         selectImage("C2-Input");
-        // Usamos output=[Point Selection]
-        run("Find Maxima...", "prominence=180 output=[Point Selection]");
         
-        numCentrosomes = 0;
-        if (selectionType() == 10) { 
-             getSelectionCoordinates(xpoints, ypoints);
-             numCentrosomes = lengthOf(xpoints);
-        }
+        // Usamos output=Count para el dato numérico limpio
+        run("Find Maxima...", "prominence=180 output=Count");
         
+        // Recuperar el dato de la tabla
+        numCentrosomes = getResult("Count", nResults-1); 
         numAllCentrosomes = numAllCentrosomes + numCentrosomes;
         
-        avgCentrosomes = 0;
-        if (numNuclei > 0) {
+        // ------------------------------------------------
+        // C. REPORTAR DATOS (LOG)
+        // ------------------------------------------------
+        // [cite: 12] PDF: Print the results for this image in the Log window
+        print("\n--- Image " + ImageCount + ": " + ImagePath + " ---");
+        print("Nuclei: " + numNuclei);
+        
+        if (numNuclei > 0){
+            avgArea = totalArea / numNuclei;
+            print("Avg Nuclei Area: " + avgArea);
+            
+            pctElongated = (numElongatedLocal / numNuclei) * 100;
+            print("Elongated Nuclei: " + numElongatedLocal + " (" + pctElongated + "%)");
+            
             avgCentrosomes = numCentrosomes / numNuclei;
+            print("Avg Centrosomes/Nuclei: " + avgCentrosomes);
+        } else {
+            print("No nuclei found.");
         }
-        print("Average amount of centrosomes per nuclei in image " + ImageCount + ": " + avgCentrosomes);
+        print("Centrosomes found: " + numCentrosomes);
 
         // ------------------------------------------------
-        // C. GENERAR Y GUARDAR IMAGEN (Tu código solicitado)
+        // D. GUARDAR IMAGEN FINAL (TIFF + ROI MANAGER)
         // ------------------------------------------------
+        // [cite: 14] PDF: Save an output TIFF image showing segmented nuclei over phase contrast
         
-        // 1. Seleccionar la imagen de Fase (C1) como base
+        // 1. Preparar el fondo (Fase)
         selectImage("C1-Input");
         run("RGB Color"); 
         
-        // 2. Añadir Núcleos al Overlay (Exactamente como tu ejemplo)
-        for (n=0; n<numNuclei; n++) {
-            roiManager("select", n);
-            Overlay.addSelection("yellow", 2); 
-        }
-        roiManager("Deselect");
-        
-        // 3. Añadir Centrosomas al Overlay
+        // 2. Añadir Centrosomas al ROI Manager (REQUISITO PDF)
+        // [cite: 16] PDF: Before saving... add detected centrosomes... output Point Selection... roiManager("add")
         selectImage("C2-Input");
-        if (selectionType() == 10) {
-            // Transferimos la selección a la imagen C1
-            selectImage("C1-Input");
-            run("Restore Selection"); 
-            Overlay.addSelection("green", 5); 
-            run("Select None"); 
-        } else {
-            selectImage("C1-Input");
+        run("Find Maxima...", "prominence=180 output=[Point Selection]");
+        
+        if (selectionType() == 10) { // Si hay puntos
+            roiManager("Add"); // [cite: 16] Cumplimos el requisito de añadirlos
+            
+            // Ahora seleccionamos ese último ROI (los puntos) para pintarlo de ROJO
+            countROIs = roiManager("count");
+            roiManager("Select", countROIs-1);
+            roiManager("Set Color", "red");
+            roiManager("Set Point Type", "Dot"); // Opcional, para que se vea bien
+            roiManager("Set Point Size", "large");
         }
         
-        // 4. Aplastar y Guardar
+        // 3. Visualizar todo sobre la imagen de Fase
+        selectImage("C1-Input");
+        roiManager("Show All without labels");
+        
+        // 4. "Aplastar" (Flatten) para fijar el dibujo
         run("Flatten"); 
         
-        saveName = replace(Files[i], ".tif", "") + "_Overlay.jpg";
-        saveAs("Jpeg", OutputFolder + saveName);
-        print(">> Saved Image: " + saveName);
+        // 5. Guardar como TIFF (REQUISITO PDF)
+        // [cite: 14] PDF: Save an output TIFF image
+        saveName = replace(Files[i], ".tif", "") + "_Overlay.tif";
+        saveAs("Tiff", OutputFolder + saveName);
+        
+        print(">> Saved TIFF: " + saveName);
         
         close("C1-Input"); 
         close("C2-Input");
-        // La imagen Flatten se cierra con Close All abajo
-
-        // waitForUser("Check results");
+        
+        // Limpiar para la siguiente
         run("Close All");
-        print("----");
     }
 }
 
-// 3. FINAL REPORT
-print("-------------------------------------------------------------");
-print("The average amount of nuclei over all images is: " + numAllNuclei/ImageCount);
-print("The average amount of centrosomes over all images is: "+numAllCentrosomes/ImageCount);
+// ==================================================
+// 3. FINAL PROJECT STATISTICS
+// ==================================================
+// [cite: 13] PDF: Compute averages for all images at the end
+print("\n==========================================");
+print("===       FINAL PROJECT SUMMARY        ===");
+print("==========================================");
+print("Total Images Processed: " + ImageCount);
 
-avgAllCentrosomes = 0;
-if (numAllNuclei > 0) {
-    avgAllCentrosomes = numAllCentrosomes/numAllNuclei;
-    print("The average amount of centrosomes per nuclei over all images is: " + avgAllCentrosomes);
-    print("The average percentage of elongated nucleis is: "+ (numAllElongated/numAllNuclei)*100 + "%");
+if (ImageCount > 0) {
+    print("Avg Nuclei per Image: " + numAllNuclei/ImageCount);
+    print("Avg Centrosomes per Image: " + numAllCentrosomes/ImageCount);
 }
 
+if (numAllNuclei > 0) {
+    avgAllCentrosomes = numAllCentrosomes / numAllNuclei;
+    print("Global Avg Centrosomes per Nucleus: " + avgAllCentrosomes);
+    
+    pctGlobalElongated = (numAllElongated / numAllNuclei) * 100;
+    print("Global % Elongated Nuclei: " + pctGlobalElongated + "%");
+}
+print("==========================================");
