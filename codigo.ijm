@@ -19,6 +19,8 @@ numAllCentrosomes = 0;
 numAllElongated = 0;
 ImageCount = 0;
 
+setBatchMode(true);
+
 // 2. MAIN LOOP
 for(i=0; i<lengthOf(Files); i++)
 {
@@ -111,6 +113,8 @@ for(i=0; i<lengthOf(Files); i++)
         }
         
         numAllCentrosomes = numAllCentrosomes + numCentrosomes;
+        
+        print("Number of centrosomes: " + numCentrosomes);
         
         avgCentrosomes = 0;
         if (numNuclei > 0) {
