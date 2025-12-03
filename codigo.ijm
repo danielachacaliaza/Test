@@ -119,7 +119,7 @@ for(i=0; i<lengthOf(Files); i++)
         print("Average amount of centrosomes per nuclei in image " + ImageCount + ": " + avgCentrosomes);
 
         // ------------------------------------------------
-        // C. GENERAR Y GUARDAR IMAGEN (Tu código solicitado)
+        // C. GENERAR Y GUARDAR IMAGEN (TIFF + ROI Manager)
         // ------------------------------------------------
         
         // 1. Seleccionar la imagen de Fase (C1) como base
@@ -136,6 +136,11 @@ for(i=0; i<lengthOf(Files); i++)
         // 3. Añadir Centrosomas al Overlay
         selectImage("C2-Input");
         if (selectionType() == 10) {
+            
+            // --- CAMBIO 1: AÑADIR AL ROI MANAGER (Requisito) ---
+            roiManager("Add"); 
+            // ---------------------------------------------------
+
             // Transferimos la selección a la imagen C1
             selectImage("C1-Input");
             run("Restore Selection"); 
@@ -148,8 +153,11 @@ for(i=0; i<lengthOf(Files); i++)
         // 4. Aplastar y Guardar
         run("Flatten"); 
         
-        saveName = replace(Files[i], ".tif", "") + "_Overlay.jpg";
-        saveAs("Jpeg", OutputFolder + saveName);
+        // --- CAMBIO 2: GUARDAR EN TIFF (Requisito) ---
+        saveName = replace(Files[i], ".tif", "") + "_Overlay.tif"; // Extensión .tif
+        saveAs("Tiff", OutputFolder + saveName);               // Formato Tiff
+        // ---------------------------------------------
+        
         print(">> Saved Image: " + saveName);
         
         close("C1-Input"); 
@@ -173,4 +181,3 @@ if (numAllNuclei > 0) {
     print("The average amount of centrosomes per nuclei over all images is: " + avgAllCentrosomes);
     print("The average percentage of elongated nucleis is: "+ (numAllElongated/numAllNuclei)*100 + "%");
 }
-
